@@ -95,7 +95,9 @@ public class ExceptionInterceptor : Interceptor
         string? code;
         string? message;
 
-        switch (ex)
+        var e = GetInnerException(ex);
+
+        switch (e)
         {
             case ValidationException validationEx:
                 var failure = validationEx.Errors.First();
@@ -124,7 +126,7 @@ public class ExceptionInterceptor : Interceptor
                 break;
             default:
                 code = Result.InternalServerError;
-                message = ex.Message;
+                message = e.Message;
 
                 break;
         }
@@ -135,5 +137,17 @@ public class ExceptionInterceptor : Interceptor
         type.GetProperty("Message")?.SetValue(response, message);
 
         return response;
+    }
+
+    private static Exception GetInnerException(Exception e)
+    {
+        var ex = e;
+
+        while (ex.InnerException != null)
+        {
+            ex = ex.InnerException;
+        }
+
+        return ex;
     }
 }

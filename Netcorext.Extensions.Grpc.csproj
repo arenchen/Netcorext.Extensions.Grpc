@@ -29,7 +29,7 @@
   <ItemGroup>
     <PackageReference Include="Grpc.Core" Version="2.45" />
     <PackageReference Include="FluentValidation" Version="10.4" />
-    <PackageReference Include="Netcorext.Contracts.Abstractions" Version="1.0.1-dev-0adb9e8" />
+    <PackageReference Include="Netcorext.Contracts.Abstractions" Version="1.0.1-dev-*" />
   </ItemGroup>
 
   <Target Name="IncludeProjectReferences" DependsOnTargets="ResolveReferences">
