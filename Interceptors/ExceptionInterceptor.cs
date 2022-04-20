@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
@@ -10,14 +12,21 @@ public class ExceptionInterceptor : Interceptor
 {
     private readonly ILogger<ExceptionInterceptor> _logger;
 
+    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+                                                                {
+                                                                    PropertyNameCaseInsensitive = true,
+                                                                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                                                                    WriteIndented = false,
+                                                                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                                                                    ReferenceHandler = ReferenceHandler.IgnoreCycles
+                                                                };
+
     public ExceptionInterceptor(ILogger<ExceptionInterceptor> logger)
     {
         _logger = logger;
     }
 
-    public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request,
-                                                                                  ServerCallContext context,
-                                                                                  UnaryServerMethod<TRequest, TResponse> continuation)
+    public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request, ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
     {
         try
         {
@@ -31,9 +40,21 @@ public class ExceptionInterceptor : Interceptor
         }
     }
 
-    public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream,
-                                                                                            ServerCallContext context,
-                                                                                            ClientStreamingServerMethod<TRequest, TResponse> continuation)
+    public override TResponse BlockingUnaryCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, BlockingUnaryCallContinuation<TRequest, TResponse> continuation)
+    {
+        try
+        {
+            return continuation(request, context);
+        }
+        catch (Exception e)
+        {
+            LogError(e);
+
+            return GetErrorResponse<TResponse>(e);
+        }
+    }
+
+    public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, ServerCallContext context, ClientStreamingServerMethod<TRequest, TResponse> continuation)
     {
         try
         {
@@ -47,10 +68,7 @@ public class ExceptionInterceptor : Interceptor
         }
     }
 
-    public override async Task ServerStreamingServerHandler<TRequest, TResponse>(TRequest request,
-                                                                                 IServerStreamWriter<TResponse> responseStream,
-                                                                                 ServerCallContext context,
-                                                                                 ServerStreamingServerMethod<TRequest, TResponse> continuation)
+    public override async Task ServerStreamingServerHandler<TRequest, TResponse>(TRequest request, IServerStreamWriter<TResponse> responseStream, ServerCallContext context, ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
         try
         {
@@ -66,10 +84,7 @@ public class ExceptionInterceptor : Interceptor
         }
     }
 
-    public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream,
-                                                                                 IServerStreamWriter<TResponse> responseStream,
-                                                                                 ServerCallContext context,
-                                                                                 DuplexStreamingServerMethod<TRequest, TResponse> continuation)
+    public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, IServerStreamWriter<TResponse> responseStream, ServerCallContext context, DuplexStreamingServerMethod<TRequest, TResponse> continuation)
     {
         try
         {
@@ -103,8 +118,8 @@ public class ExceptionInterceptor : Interceptor
                 var failure = validationEx.Errors.First();
 
                 code = typeof(Result).GetFields(BindingFlags.Public | BindingFlags.Static)
-                                         .Select(t => t.GetValue(null)?.ToString())
-                                         .FirstOrDefault(t => t == failure.ErrorCode);
+                                     .Select(t => t.GetValue(null)?.ToString())
+                                     .FirstOrDefault(t => t == failure.ErrorCode);
 
                 code ??= Result.InvalidInput;
 
@@ -122,6 +137,26 @@ public class ExceptionInterceptor : Interceptor
                            : Result.InvalidInput;
 
                 message = badHttpRequestEx.Message;
+
+                break;
+            case RpcException rpcException:
+                var result = Result.InternalServerError.Clone();
+                result.Message = rpcException.Message;
+
+                if (rpcException.StatusCode == StatusCode.Unauthenticated || rpcException.StatusCode == StatusCode.PermissionDenied)
+                {
+                    try
+                    {
+                        result = JsonSerializer.Deserialize<Result>(rpcException.Status.Detail, JsonOptions);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+
+                code = result.Code;
+                message = result.Message;
 
                 break;
             default:
