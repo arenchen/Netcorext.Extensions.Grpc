@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentValidation;
+using FluentValidation.Results;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Netcorext.Contracts;
@@ -34,8 +35,6 @@ public class ExceptionInterceptor : Interceptor
         }
         catch (Exception e)
         {
-            LogError(e);
-
             return GetErrorResponse<TResponse>(e);
         }
     }
@@ -48,8 +47,6 @@ public class ExceptionInterceptor : Interceptor
         }
         catch (Exception e)
         {
-            LogError(e);
-
             return GetErrorResponse<TResponse>(e);
         }
     }
@@ -62,8 +59,6 @@ public class ExceptionInterceptor : Interceptor
         }
         catch (Exception e)
         {
-            LogError(e);
-
             return GetErrorResponse<TResponse>(e);
         }
     }
@@ -76,8 +71,6 @@ public class ExceptionInterceptor : Interceptor
         }
         catch (Exception e)
         {
-            LogError(e);
-
             var response = GetErrorResponse<TResponse>(e);
 
             await responseStream.WriteAsync(response);
@@ -92,46 +85,40 @@ public class ExceptionInterceptor : Interceptor
         }
         catch (Exception e)
         {
-            LogError(e);
-
             var response = GetErrorResponse<TResponse>(e);
 
             await responseStream.WriteAsync(response);
         }
     }
-
-    private void LogError(Exception e)
-    {
-        _logger.LogError(e, e.ToString());
-    }
-
-    private static TResponse GetErrorResponse<TResponse>(Exception ex)
+    
+    private TResponse GetErrorResponse<TResponse>(Exception ex)
     {
         string? code;
         string? message;
-
+        IEnumerable<ValidationFailure>? errors = null;
+        
         var e = GetInnerException(ex);
 
         switch (e)
         {
             case ValidationException validationEx:
-                var failure = validationEx.Errors.First();
-
-                code = typeof(Result).GetFields(BindingFlags.Public | BindingFlags.Static)
-                                     .Select(t => t.GetValue(null)?.ToString())
-                                     .FirstOrDefault(t => t == failure.ErrorCode);
-
-                code ??= Result.InvalidInput;
-
-                message = failure.ErrorMessage;
+                _logger.LogWarning(e, "{Message}", e);
+                
+                code = Result.InvalidInput;
+                message = validationEx.Message;
+                errors = validationEx.Errors;
 
                 break;
             case ArgumentException argumentEx:
+                _logger.LogWarning(e, "{Message}", e);
+                
                 code = Result.InvalidInput;
                 message = argumentEx.Message;
 
                 break;
             case BadHttpRequestException badHttpRequestEx:
+                _logger.LogWarning(e, "{Message}", e);
+                
                 code = badHttpRequestEx.Message == "Request body too large."
                            ? Result.PayloadTooLarge
                            : Result.InvalidInput;
@@ -140,7 +127,10 @@ public class ExceptionInterceptor : Interceptor
 
                 break;
             case RpcException rpcException:
+                _logger.LogError(e, "{Message}", e);
+                
                 var result = Result.InternalServerError.Clone();
+                
                 result.Message = rpcException.Message;
 
                 if (rpcException.StatusCode == StatusCode.Unauthenticated || rpcException.StatusCode == StatusCode.PermissionDenied)
@@ -160,6 +150,8 @@ public class ExceptionInterceptor : Interceptor
 
                 break;
             default:
+                _logger.LogError(e, "{Message}", e);
+                
                 code = Result.InternalServerError;
                 message = e.Message;
 
@@ -170,6 +162,7 @@ public class ExceptionInterceptor : Interceptor
         var type = typeof(TResponse);
         type.GetProperty("Code")?.SetValue(response, code);
         type.GetProperty("Message")?.SetValue(response, message);
+        type.GetProperty("Errors")?.SetValue(response, errors);
 
         return response;
     }
