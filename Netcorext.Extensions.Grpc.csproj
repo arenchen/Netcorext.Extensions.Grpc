@@ -29,6 +29,7 @@
   <ItemGroup>
     <PackageReference Include="Grpc.Core" Version="2.46" />
     <PackageReference Include="Netcorext.Contracts.Abstractions" Version="1.0.1-dev.*" />
+    <PackageReference Include="Netcorext.Contracts.Protobufs" Version="1.0.0-dev.*" />
   </ItemGroup>
 
   <Target Name="IncludeProjectReferences" DependsOnTargets="ResolveReferences">

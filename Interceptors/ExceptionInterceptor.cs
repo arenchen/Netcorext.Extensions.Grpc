@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentValidation;
-using FluentValidation.Results;
+using Google.Protobuf.Collections;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Netcorext.Contracts;
@@ -13,7 +13,7 @@ public class ExceptionInterceptor : Interceptor
 {
     private readonly ILogger<ExceptionInterceptor> _logger;
 
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+    private static readonly JsonSerializerOptions JsonOptions = new()
                                                                 {
                                                                     PropertyNameCaseInsensitive = true,
                                                                     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -90,35 +90,47 @@ public class ExceptionInterceptor : Interceptor
             await responseStream.WriteAsync(response);
         }
     }
-    
+
     private TResponse GetErrorResponse<TResponse>(Exception ex)
     {
         string? code;
         string? message;
-        IEnumerable<ValidationFailure>? errors = null;
-        
+        object[]? errors = null;
+
         var e = GetInnerException(ex);
 
         switch (e)
         {
             case ValidationException validationEx:
                 _logger.LogWarning(e, "{Message}", e);
-                
+
                 code = Result.InvalidInput;
                 message = validationEx.Message;
-                errors = validationEx.Errors;
+
+                errors = validationEx.Errors
+                                     .Select(t => new Contracts.Protobufs.Result.Types.ValidationFailure
+                                                  {
+                                                      Severity = t.Severity switch
+                                                                 {
+                                                                     Severity.Info => Contracts.Protobufs.Result.Types.Severity.Info,
+                                                                     Severity.Warning => Contracts.Protobufs.Result.Types.Severity.Warning,
+                                                                     Severity.Error => Contracts.Protobufs.Result.Types.Severity.Error,
+                                                                     _ => throw new ArgumentOutOfRangeException(nameof(t.Severity), t.Severity, null)
+                                                                 }
+                                                  })
+                                     .ToArray();
 
                 break;
             case ArgumentException argumentEx:
                 _logger.LogWarning(e, "{Message}", e);
-                
+
                 code = Result.InvalidInput;
                 message = argumentEx.Message;
 
                 break;
             case BadHttpRequestException badHttpRequestEx:
                 _logger.LogWarning(e, "{Message}", e);
-                
+
                 code = badHttpRequestEx.Message == "Request body too large."
                            ? Result.PayloadTooLarge
                            : Result.InvalidInput;
@@ -128,9 +140,9 @@ public class ExceptionInterceptor : Interceptor
                 break;
             case RpcException rpcException:
                 _logger.LogError(e, "{Message}", e);
-                
+
                 var result = Result.InternalServerError.Clone();
-                
+
                 result.Message = rpcException.Message;
 
                 if (rpcException.StatusCode == StatusCode.Unauthenticated || rpcException.StatusCode == StatusCode.PermissionDenied)
@@ -151,7 +163,7 @@ public class ExceptionInterceptor : Interceptor
                 break;
             default:
                 _logger.LogError(e, "{Message}", e);
-                
+
                 code = Result.InternalServerError;
                 message = e.Message;
 
@@ -162,7 +174,20 @@ public class ExceptionInterceptor : Interceptor
         var type = typeof(TResponse);
         type.GetProperty("Code")?.SetValue(response, code);
         type.GetProperty("Message")?.SetValue(response, message);
-        type.GetProperty("Errors")?.SetValue(response, errors);
+
+        if (errors == null || !errors.Any()) return response;
+
+        var propErrors = type.GetProperty("Errors");
+
+        if (propErrors == null || propErrors.PropertyType != typeof(RepeatedField<Contracts.Protobufs.Result.Types.ValidationFailure>)) return response;
+
+        var methodAddRange = propErrors.PropertyType.GetMethod("AddRange");
+
+        if (methodAddRange == null) return response;
+
+        var errorsField = propErrors.GetValue(response);
+        
+        methodAddRange.Invoke(errorsField, new object[] { errors });
 
         return response;
     }
