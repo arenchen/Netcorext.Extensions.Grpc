@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentValidation;
@@ -102,7 +101,7 @@ public class ExceptionInterceptor : Interceptor
         switch (e)
         {
             case ValidationException validationEx:
-                _logger.LogWarning(e, "{Message}", e);
+                _logger.LogWarning(e, "{Message}", e.Message);
 
                 code = Result.InvalidInput;
                 message = validationEx.Message;
@@ -122,14 +121,14 @@ public class ExceptionInterceptor : Interceptor
 
                 break;
             case ArgumentException argumentEx:
-                _logger.LogWarning(e, "{Message}", e);
+                _logger.LogWarning(e, "{Message}", e.Message);
 
                 code = Result.InvalidInput;
                 message = argumentEx.Message;
 
                 break;
             case BadHttpRequestException badHttpRequestEx:
-                _logger.LogWarning(e, "{Message}", e);
+                _logger.LogWarning(e, "{Message}", e.Message);
 
                 code = badHttpRequestEx.Message == "Request body too large."
                            ? Result.PayloadTooLarge
@@ -139,7 +138,7 @@ public class ExceptionInterceptor : Interceptor
 
                 break;
             case RpcException rpcException:
-                _logger.LogError(e, "{Message}", e);
+                _logger.LogError(e, "{Message}", e.Message);
 
                 var result = Result.InternalServerError.Clone();
 
@@ -162,7 +161,7 @@ public class ExceptionInterceptor : Interceptor
 
                 break;
             default:
-                _logger.LogError(e, "{Message}", e);
+                _logger.LogError(e, "{Message}", e.Message);
 
                 code = Result.InternalServerError;
                 message = e.Message;
@@ -186,7 +185,7 @@ public class ExceptionInterceptor : Interceptor
         if (methodAddRange == null) return response;
 
         var errorsField = propErrors.GetValue(response);
-        
+
         methodAddRange.Invoke(errorsField, new object[] { errors });
 
         return response;
