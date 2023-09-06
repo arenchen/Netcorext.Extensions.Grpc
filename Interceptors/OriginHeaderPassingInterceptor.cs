@@ -20,8 +20,8 @@ public class OriginHeaderPassingInterceptor : Interceptor
                                                                                   AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
     {
         var entries = _httpContextAccessor.HttpContext?.Request.Headers
-                                          .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .Where(_options.Handler)
+                                          .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .ToArray();
 
         if (entries?.Any() != true)
@@ -44,8 +44,8 @@ public class OriginHeaderPassingInterceptor : Interceptor
     public override TResponse BlockingUnaryCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, BlockingUnaryCallContinuation<TRequest, TResponse> continuation)
     {
         var entries = _httpContextAccessor.HttpContext?.Request.Headers
-                                          .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .Where(_options.Handler)
+                                          .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .ToArray();
 
         if (entries?.Any() != true)
