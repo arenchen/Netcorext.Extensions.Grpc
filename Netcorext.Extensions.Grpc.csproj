@@ -10,6 +10,7 @@
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
     <FileVersion>$(VersionMajor).$([System.DateTime]::UtcNow.ToString(yy)).$([System.DateTime]::UtcNow.ToString(MMdd)).$([System.DateTime]::UtcNow.ToString(HHmm))</FileVersion>
     <IsPackable>true</IsPackable>
+    <OutputType>Library</OutputType>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Nullable>enable</Nullable>
@@ -27,7 +28,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.46.*" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
+    <PackageReference Include="Netcorext.Extensions.AspNetCore" Version="1.0.1-dev.*" />
     <PackageReference Include="Netcorext.Contracts.Abstractions" Version="1.0.1-dev.*" />
     <PackageReference Include="Netcorext.Contracts.Protobufs" Version="1.0.0-dev.*" />
   </ItemGroup>

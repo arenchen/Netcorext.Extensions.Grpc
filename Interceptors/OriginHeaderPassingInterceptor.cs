@@ -1,16 +1,20 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
+using Netcorext.Contracts;
+using Netcorext.Extensions.Grpc.Helpers;
 using Netcorext.Extensions.Grpc.Options;
 
 namespace Netcorext.Extensions.Grpc.Interceptors;
 
 public class OriginHeaderPassingInterceptor : Interceptor
 {
+    private readonly IContextState _contextState;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly OriginHeaderPassingInterceptorOptions _options;
 
-    public OriginHeaderPassingInterceptor(IHttpContextAccessor httpContextAccessor, OriginHeaderPassingInterceptorOptions options)
+    public OriginHeaderPassingInterceptor(IContextState contextState, IHttpContextAccessor httpContextAccessor, OriginHeaderPassingInterceptorOptions options)
     {
+        _contextState = contextState;
         _httpContextAccessor = httpContextAccessor;
         _options = options;
     }
@@ -23,6 +27,8 @@ public class OriginHeaderPassingInterceptor : Interceptor
                                           .Where(_options.Handler)
                                           .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .ToArray();
+
+        var authorization = _contextState.GetAuthorizationToken(_httpContextAccessor.HttpContext?.Request.Headers);
 
         if (entries?.Any() != true)
             return continuation(request, context);
@@ -47,6 +53,8 @@ public class OriginHeaderPassingInterceptor : Interceptor
                                           .Where(_options.Handler)
                                           .Select(t => new Metadata.Entry(t.Key.ToLower(), t.Value))
                                           .ToArray();
+
+        var authorization = _contextState.GetAuthorizationToken(_httpContextAccessor.HttpContext?.Request.Headers);
 
         if (entries?.Any() != true)
             return continuation(request, context);
